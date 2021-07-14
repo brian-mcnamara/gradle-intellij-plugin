@@ -132,7 +132,7 @@ open class IntelliJPlugin : Plugin<Project> {
         configurePatchPluginXmlTask(project, extension)
         configureRobotServerDownloadTask(project)
         configurePrepareSandboxTasks(project, extension)
-        configureRunPluginVerifierTask(project)
+        configureRunPluginVerifierTask(project, extension)
         configurePluginVerificationTask(project)
         configureRunIdeaTask(project)
         configureRunIdeaForUiTestsTask(project)
@@ -394,6 +394,20 @@ open class IntelliJPlugin : Plugin<Project> {
 
             it.version.convention(VERSION_LATEST)
             it.outputDir.convention(project.layout.projectDirectory.dir("${project.buildDir}/robotServerPlugin"))
+            it.pluginArchive.convention(project.provider {
+                val resolvedVersion = DownloadRobotServerPluginTask.resolveVersion(it.version.orNull)
+                val (group, name) = DownloadRobotServerPluginTask.getDependency(resolvedVersion).split(':')
+                download(
+                    project,
+                    IntelliJPluginConstants.INTELLIJ_DEPENDENCIES,
+                    project.dependencies.create(
+                        group = group,
+                        name = name,
+                        version = resolvedVersion,
+                    ),
+                    it.logCategory(),
+                )
+            })
         }
     }
 
@@ -438,7 +452,7 @@ open class IntelliJPlugin : Plugin<Project> {
         }
     }
 
-    private fun configureRunPluginVerifierTask(project: Project) {
+    private fun configureRunPluginVerifierTask(project: Project, extension: IntelliJPluginExtension) {
         info(context, "Configuring run plugin verifier task")
         project.tasks.register(IntelliJPluginConstants.RUN_PLUGIN_VERIFIER_TASK_NAME, RunPluginVerifierTask::class.java) {
             val taskContext = it.logCategory()
@@ -532,6 +546,7 @@ open class IntelliJPlugin : Plugin<Project> {
                     taskContext,
                 ).canonicalPath
             })
+            it.jreRepository.convention(extension.jreRepository)
 
             it.dependsOn(IntelliJPluginConstants.BUILD_PLUGIN_TASK_NAME)
             it.dependsOn(IntelliJPluginConstants.VERIFY_PLUGIN_TASK_NAME)
