@@ -399,14 +399,14 @@ open class IntelliJPlugin : Plugin<Project> {
                 val (group, name) = DownloadRobotServerPluginTask.getDependency(resolvedVersion).split(':')
                 download(
                     project,
-                    IntelliJPluginConstants.INTELLIJ_DEPENDENCIES,
+                    it.logCategory(),
                     project.dependencies.create(
                         group = group,
                         name = name,
                         version = resolvedVersion,
                     ),
-                    it.logCategory(),
-                )
+                    IntelliJPluginConstants.INTELLIJ_DEPENDENCIES,
+                ).first()
             })
         }
     }
@@ -492,15 +492,15 @@ open class IntelliJPlugin : Plugin<Project> {
                         try {
                             val ideArchive = download(
                                 project,
-                                url,
+                                taskContext,
                                 project.dependencies.create(
                                     group = "com.jetbrains",
                                     name = "ides",
                                     version = "$type-$version-$buildType",
                                     extension = "tar.gz",
                                 ),
-                                taskContext,
-                            )
+                                url,
+                            ).first()
 
                             debug(context, "IDE downloaded, extracting...")
                             archiveUtils.extract(ideArchive, downloadDir, taskContext)
@@ -535,7 +535,7 @@ open class IntelliJPlugin : Plugin<Project> {
 
                 download(
                     project,
-                    IntelliJPluginConstants.PLUGIN_VERIFIER_REPOSITORY,
+                    taskContext,
                     project.dependencies.create(
                         group = "org.jetbrains.intellij.plugins",
                         name = "verifier-cli",
@@ -543,8 +543,8 @@ open class IntelliJPlugin : Plugin<Project> {
                         classifier = "all",
                         extension = "jar",
                     ),
-                    taskContext,
-                ).canonicalPath
+                    IntelliJPluginConstants.PLUGIN_VERIFIER_REPOSITORY,
+                ).first().canonicalPath
             })
             it.jreRepository.convention(extension.jreRepository)
 
@@ -557,20 +557,22 @@ open class IntelliJPlugin : Plugin<Project> {
 
     private fun download(
         project: Project,
-        repositoryUrl: String,
-        dependency: Dependency,
         context: String?,
-    ): File {
-        val repository = project.repositories.maven {
-            it.url = URI(repositoryUrl)
+        dependency: Dependency,
+        vararg repositoryUrls: String,
+    ): List<File> {
+        val repositories = project.repositories.run {
+            repositoryUrls.map { url ->
+                maven { it.url = URI(url) }
+            }
         }
         try {
-            return project.configurations.detachedConfiguration(dependency).singleFile
+            return project.configurations.detachedConfiguration(dependency).files.toList()
         } catch (e: Exception) {
             error(context, "Error when resolving Plugin Verifier path", e)
             throw e
         } finally {
-            project.repositories.remove(repository)
+            project.repositories.removeAll(repositories)
         }
     }
 
@@ -713,9 +715,6 @@ open class IntelliJPlugin : Plugin<Project> {
                     it.sourceSetAllDirs.convention(project.provider {
                         sourceSet.allSource.srcDirs
                     })
-                    it.intellijRepository.convention(project.provider {
-                        extension.intellijRepository.get()
-                    })
                     it.sourceSetResources.convention(project.provider {
                         sourceSet.resources.files
                     })
@@ -741,6 +740,20 @@ open class IntelliJPlugin : Plugin<Project> {
                     it.javac2.convention(project.layout.file(project.provider {
                         project.file("${extension.getIdeaDependency(project).classes}/lib/javac2.jar").takeIf(File::exists)
                     }))
+                    it.compilerClassPathFromMaven.convention(project.provider {
+                        val compilerVersion = it.compilerVersion.get()
+                        download(
+                            project,
+                            it.logCategory(),
+                            project.dependencies.create(
+                                group = "com.jetbrains.intellij.java",
+                                name = "java-compiler-ant-tasks",
+                                version = compilerVersion,
+                            ),
+                            "${extension.intellijRepository.get()}/${releaseType(compilerVersion)}",
+                            IntelliJPluginConstants.INTELLIJ_DEPENDENCIES,
+                        )
+                    })
 
                     val classesDir = sourceSet.output.classesDirs.first()
                     val outputDir = File(classesDir.parentFile, "${sourceSet.name}-instrumented")
