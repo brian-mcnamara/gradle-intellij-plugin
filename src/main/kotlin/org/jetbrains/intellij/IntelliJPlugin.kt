@@ -1561,7 +1561,7 @@ abstract class IntelliJPlugin : Plugin<Project> {
             Jvm.current().toolsJar?.let { toolsJar ->
                 project.dependencies.add(JavaPlugin.RUNTIME_ONLY_CONFIGURATION_NAME, project.files(toolsJar))
             }
-        }
+        }.get()
     }
 
     private fun configurePluginDependencies(
